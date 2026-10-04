@@ -1,15 +1,5 @@
-##############################################################################
-# CORE: Centralized Operations & Routing Engine
-# Root Docker Compose — Infrastructure + Services
-##############################################################################
-
 services:
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # INFRASTRUCTURE
-  # ═══════════════════════════════════════════════════════════════════════════
-
-  # ── PostgreSQL ────────────────────────────────────────────────────────────
   postgres:
     image: postgres:15
     container_name: core-postgres
@@ -31,7 +21,6 @@ services:
     networks:
       - core-network
 
-  # ── Zookeeper (Kafka dependency) ──────────────────────────────────────────
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: core-zookeeper
@@ -47,7 +36,6 @@ services:
     networks:
       - core-network
 
-  # ── Kafka ─────────────────────────────────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: core-kafka
@@ -77,7 +65,6 @@ services:
     networks:
       - core-network
 
-  # ── ChromaDB (Vector Store) ───────────────────────────────────────────────
   chromadb:
     image: chromadb/chroma:latest
     container_name: core-chromadb
@@ -92,11 +79,6 @@ services:
     networks:
       - core-network
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # APPLICATION SERVICES
-  # ═══════════════════════════════════════════════════════════════════════════
-
-  # ── API Gateway (Spring Cloud Gateway) ────────────────────────────────────
   gateway:
     build:
       context: ./gateway
@@ -119,7 +101,6 @@ services:
     networks:
       - core-network
 
-  # ── Inventory Service ─────────────────────────────────────────────────────
   inventory-service:
     build:
       context: ./backend/inventory-service
@@ -142,7 +123,6 @@ services:
     networks:
       - core-network
 
-  # ── Orders Service ────────────────────────────────────────────────────────
   orders-service:
     build:
       context: ./backend/orders-service
@@ -165,7 +145,6 @@ services:
     networks:
       - core-network
 
-  # ── AI Agent (FastAPI + LangChain) ────────────────────────────────────────
   ai-agent:
     build:
       context: ./ai-agent
@@ -185,7 +164,6 @@ services:
     networks:
       - core-network
 
-  # ── Frontend (Next.js) ───────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -200,10 +178,6 @@ services:
       - "3000:3000"
     networks:
       - core-network
-
-# ═════════════════════════════════════════════════════════════════════════════
-# VOLUMES & NETWORKS
-# ═════════════════════════════════════════════════════════════════════════════
 
 volumes:
   postgres_data:
