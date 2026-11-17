@@ -1,9 +1,9 @@
 package com.core.orders.controller;
 
 import com.core.orders.model.Order;
+import com.core.orders.api.OrderRequest;
 import com.core.orders.service.OrderService;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,10 +11,13 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/orders")
-@RequiredArgsConstructor
 public class OrderController {
 
     private final OrderService orderService;
+
+    public OrderController(OrderService orderService) {
+        this.orderService = orderService;
+    }
 
     @GetMapping
     public List<Order> findAll() {
@@ -28,7 +31,7 @@ public class OrderController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Order create(@Valid @RequestBody Order order) {
+    public Order create(@Valid @RequestBody OrderRequest order) {
         return orderService.create(order);
     }
 
