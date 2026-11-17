@@ -1,0 +1,14 @@
+FROM docker.io/library/maven:3.9.12-eclipse-temurin-17 AS builder
+WORKDIR /app
+COPY pom.xml .
+RUN mvn -B -q dependency:go-offline
+COPY src ./src
+RUN mvn -B -q package -DskipTests
+
+FROM docker.io/library/eclipse-temurin:17-jre-alpine
+WORKDIR /app
+RUN addgroup -S core && adduser -S core -G core
+COPY --from=builder /app/target/*.jar app.jar
+USER core
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
