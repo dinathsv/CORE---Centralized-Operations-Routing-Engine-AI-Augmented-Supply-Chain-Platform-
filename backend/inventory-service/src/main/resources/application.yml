@@ -2,13 +2,20 @@ server:
   port: 8081
 
 spring:
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+  mvc:
+    problemdetails:
+      enabled: true
   application:
     name: inventory-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/core_inventory
-    username: core_admin
-    password: core_secret
+    url: jdbc:postgresql://localhost:${POSTGRES_PORT:5432}/core_inventory
+    username: ${POSTGRES_USER:core_admin}
+    password: ${POSTGRES_PASSWORD:core_secret}
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: update
     show-sql: false
@@ -23,6 +30,12 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        delivery.timeout.ms: 10000
+        request.timeout.ms: 5000
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
@@ -31,3 +44,8 @@ management:
     web:
       exposure:
         include: health,info
+
+core:
+  outbox:
+    enabled: true
+    poll-interval-ms: 2000

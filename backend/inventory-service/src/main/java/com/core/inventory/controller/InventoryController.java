@@ -1,9 +1,9 @@
 package com.core.inventory.controller;
 
 import com.core.inventory.model.InventoryItem;
+import com.core.inventory.api.InventoryRequest;
 import com.core.inventory.service.InventoryService;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,10 +11,13 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/inventory")
-@RequiredArgsConstructor
 public class InventoryController {
 
     private final InventoryService inventoryService;
+
+    public InventoryController(InventoryService inventoryService) {
+        this.inventoryService = inventoryService;
+    }
 
     @GetMapping
     public List<InventoryItem> findAll() {
@@ -28,12 +31,12 @@ public class InventoryController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public InventoryItem create(@Valid @RequestBody InventoryItem item) {
+    public InventoryItem create(@Valid @RequestBody InventoryRequest item) {
         return inventoryService.create(item);
     }
 
     @PutMapping("/{id}")
-    public InventoryItem update(@PathVariable Long id, @Valid @RequestBody InventoryItem item) {
+    public InventoryItem update(@PathVariable Long id, @Valid @RequestBody InventoryRequest item) {
         return inventoryService.update(id, item);
     }
 
