@@ -8,30 +8,36 @@ spring:
     gateway:
       routes:
         - id: inventory-service
-          uri: http://inventory-service:8081
+          uri: ${INVENTORY_SERVICE_URL:http://localhost:8081}
           predicates:
-            - Path=/api/inventory/**
+            - Path=/api/inventory,/api/inventory/**
           filters:
             - StripPrefix=1
+            - RemoveRequestHeader=Authorization
         - id: orders-service
-          uri: http://orders-service:8082
+          uri: ${ORDERS_SERVICE_URL:http://localhost:8082}
           predicates:
-            - Path=/api/orders/**
+            - Path=/api/orders,/api/orders/**
           filters:
             - StripPrefix=1
+            - RemoveRequestHeader=Authorization
         - id: ai-agent
-          uri: http://ai-agent:8090
+          uri: ${AI_SERVICE_URL:http://localhost:8090}
           predicates:
             - Path=/api/ai/**
           filters:
-            - StripPrefix=1
+            - StripPrefix=2
+            - RemoveRequestHeader=Authorization
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 60s
   security:
     user:
-      name: admin
-      password: admin
+      name: ${CORE_ADMIN_USERNAME:admin}
+      password: ${CORE_ADMIN_PASSWORD:admin}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,gateway
+        include: health,info
