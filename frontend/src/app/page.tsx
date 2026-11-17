@@ -1,69 +1,156 @@
-import Image from "next/image";
+"use client";
+
+import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+
+type Item = { id: number; sku: string; name: string; description: string | null; quantity: number; price: number };
+type Status = "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+type Order = { id: number; customerName: string; sku: string; quantity: number; status: Status; createdAt: string };
+type View = "overview" | "inventory" | "orders" | "assistant";
+type Answer = { answer: string; sources: string[]; mode?: string; warning?: string };
+type Notice = { message: string; error?: boolean } | null;
+const views: { id: View; label: string; icon: string }[] = [
+  { id: "overview", label: "Overview", icon: "grid" }, { id: "inventory", label: "Inventory", icon: "box" },
+  { id: "orders", label: "Orders", icon: "orders" }, { id: "assistant", label: "AI assistant", icon: "spark" },
+];
+const labels: Record<Status, string> = { PENDING: "Pending", CONFIRMED: "Confirmed", SHIPPED: "Shipped", DELIVERED: "Delivered", CANCELLED: "Cancelled" };
+const next: Partial<Record<Status, Status>> = { PENDING: "CONFIRMED", CONFIRMED: "SHIPPED", SHIPPED: "DELIVERED" };
+const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+const number = (n: number) => new Intl.NumberFormat("en-US").format(n);
+const message = (error: unknown) => error instanceof Error ? error.message : "Something went wrong. Please try again.";
+
+function Icon({ name, size = 20 }: { name: string; size?: number }) {
+  const paths: Record<string, ReactNode> = {
+    grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+    box: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="M3 8v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5" /></>,
+    orders: <><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V2h6v2M9 9h6M9 13h6M9 17h3" /></>,
+    spark: <><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3ZM20 2v4M18 4h4" /></>,
+    arrow: <path d="M5 12h14m-5-5 5 5-5 5" />, plus: <path d="M12 5v14M5 12h14" />,
+    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
+    refresh: <><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1" /></>,
+    close: <path d="m6 6 12 12M6 18 18 6" />, logout: <><path d="M10 4H5v16h5M14 8l4 4-4 4M8 12h10" /></>,
+    check: <path d="m5 12 4 4L19 6" />, alert: <><path d="m12 3 10 18H2L12 3ZM12 9v5M12 17v.1" /></>,
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] || paths.box}</svg>;
+}
+function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => { ref.current?.showModal(); }, []);
+  return <dialog ref={ref} className="modal" aria-labelledby="modal-title" onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === event.currentTarget) close(); }}><div className="modal-heading"><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={close}><Icon name="close" /></button></div>{children}</dialog>;
+}
+function Badge({ status }: { status: Status }) { return <span className={`badge ${status.toLowerCase()}`}><span />{labels[status]}</span>; }
+function Empty({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) { return <div className="empty"><div className="empty-icon"><Icon name="box" size={28} /></div><h3>{title}</h3><p>{detail}</p>{action}</div>; }
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+  const [auth, setAuth] = useState<string | null>(null);
+  const [user, setUser] = useState("");
+  const [view, setView] = useState<View>("overview");
+  const [items, setItems] = useState<Item[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [stale, setStale] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<Notice>(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("ALL");
+  const [editor, setEditor] = useState<Item | "new" | null>(null);
+  const [newOrder, setNewOrder] = useState(false);
+  const [deleting, setDeleting] = useState<Item | null>(null);
+  const [cancelling, setCancelling] = useState<Order | null>(null);
+  const [updated, setUpdated] = useState<Date | null>(null);
+  const [answer, setAnswer] = useState<Answer | null>(null);
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [ingesting, setIngesting] = useState(false);
+
+  const api = useCallback(async <T,>(path: string, options: RequestInit = {}, credentials = auth): Promise<T> => {
+    const response = await fetch(`/api${path}`, { ...options, cache: "no-store", headers: { "Content-Type": "application/json", ...(credentials ? { Authorization: credentials } : {}), ...options.headers } });
+    const data = response.status === 204 ? null : await response.json().catch(() => null);
+    if (!response.ok) throw new Error(typeof data?.detail === "string" ? data.detail : typeof data?.message === "string" ? data.message : response.status === 401 ? "Sign-in failed. Check your username and password." : `Request failed (${response.status}). Please try again.`);
+    return data as T;
+  }, [auth]);
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try { const [inventory, currentOrders] = await Promise.all([api<Item[]>("/inventory"), api<Order[]>("/orders")]); setItems(inventory); setOrders(currentOrders); setLoaded(true); setStale(false); setUpdated(new Date()); }
+    catch (error) { setStale(true); setNotice({ message: message(error), error: true }); }
+    finally { setLoading(false); }
+  }, [api]);
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setNotice(null);
+    const form = new FormData(event.currentTarget), username = String(form.get("username"));
+    const bytes = new TextEncoder().encode(`${username}:${String(form.get("password"))}`);
+    const credentials = `Basic ${btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""))}`;
+    try { const [inventory, currentOrders] = await Promise.all([api<Item[]>("/inventory", {}, credentials), api<Order[]>("/orders", {}, credentials)]); setItems(inventory); setOrders(currentOrders); setLoaded(true); setStale(false); setUpdated(new Date()); setUser(username); setAuth(credentials); }
+    catch (error) { setNotice({ message: message(error), error: true }); }
+    finally { setBusy(false); }
+  }
+  async function mutate(path: string, options: RequestInit, success: string) {
+    setBusy(true); setNotice(null);
+    try { await api(path, options); setEditor(null); setNewOrder(false); setDeleting(null); setCancelling(null); setNotice({ message: success }); await refresh(); }
+    catch (error) { setNotice({ message: message(error), error: true }); }
+    finally { setBusy(false); }
+  }
+  function saveItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    const item = { sku: String(form.get("sku")).trim(), name: String(form.get("name")).trim(), description: String(form.get("description")).trim(), quantity: Number(form.get("quantity")), price: Number(form.get("price")) };
+    if (!Number.isInteger(item.quantity) || item.quantity < 0 || item.quantity > 1_000_000_000) {
+      setNotice({ message: "Quantity must be a whole number between 0 and 1,000,000,000.", error: true }); return;
+    }
+    void mutate(editor === "new" ? "/inventory" : `/inventory/${(editor as Item).id}`, { method: editor === "new" ? "POST" : "PUT", body: JSON.stringify(item) }, editor === "new" ? "Inventory item created." : "Inventory item updated.");
+  }
+  function saveOrder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    const quantity = Number(form.get("quantity"));
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1_000_000_000) {
+      setNotice({ message: "Quantity must be a whole number between 1 and 1,000,000,000.", error: true }); return;
+    }
+    void mutate("/orders", { method: "POST", body: JSON.stringify({ customerName: String(form.get("customerName")).trim(), sku: String(form.get("sku")).trim(), quantity }) }, "Order created and ready for review.");
+  }
+  async function ask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setAsking(true); setNotice(null); setAnswer(null);
+    try { setAnswer(await api<Answer>("/ai/query", { method: "POST", body: JSON.stringify({ query: question.trim(), collection: "operations" }) })); }
+    catch (error) { setNotice({ message: message(error), error: true }); }
+    finally { setAsking(false); }
+  }
+  async function ingest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setIngesting(true); setNotice(null); const element = event.currentTarget, form = new FormData(element);
+    try { await api("/ai/documents", { method: "POST", body: JSON.stringify({ collection: "operations", documents: [{ id: crypto.randomUUID(), text: String(form.get("text")).trim(), source: String(form.get("source")).trim() }] }) }); element.reset(); setNotice({ message: "Document added to the operations knowledge base." }); }
+    catch (error) { setNotice({ message: message(error), error: true }); }
+    finally { setIngesting(false); }
+  }
+  function navigate(destination: View) { setView(destination); setSearch(""); setFilter("ALL"); setNotice(null); }
+  function logout() { setAuth(null); setItems([]); setOrders([]); setLoaded(false); setNotice(null); setAnswer(null); setQuestion(""); setView("overview"); }
+  const low = items.filter((item) => item.quantity <= 10);
+  const active = orders.filter((order) => !["DELIVERED", "CANCELLED"].includes(order.status));
+  const value = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+  const shownItems = items.filter((item) => `${item.name} ${item.sku} ${item.description || ""}`.toLowerCase().includes(search.toLowerCase()) && (filter !== "LOW" || item.quantity <= 10));
+  const shownOrders = [...orders].sort((a, b) => b.id - a.id).filter((order) => `${order.id} ${order.customerName} ${order.sku}`.toLowerCase().includes(search.toLowerCase()) && (filter === "ALL" || order.status === filter));
+  const itemForm = editor && editor !== "new" ? editor : null;
+  const noticeElement = notice && <div className={`notice ${notice.error ? "error" : "success"}`} role={notice.error ? "alert" : "status"}><Icon name={notice.error ? "alert" : "check"} /><span>{notice.message}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice(null)}><Icon name="close" size={16} /></button></div>;
+
+  if (!auth) return <main className="login-page"><div className="login-story"><Link href="/" className="brand"><span className="brand-mark">C</span>CORE<span className="brand-dot">.</span></Link><div><span className="eyebrow">YOUR OPERATIONS, CONNECTED</span><h1>A clearer view.<br />A smarter operation.</h1><p>Inventory, orders, and operational knowledge. One workspace to keep everything moving.</p><div className="login-features"><span><Icon name="box" /> Track your inventory</span><span><Icon name="orders" /> Move orders forward</span><span><Icon name="spark" /> Find answers faster</span></div></div><small>Centralized Operations &amp; Routing Engine</small></div><div className="login-panel"><form className="login-form" onSubmit={login}><span className="eyebrow">OPERATIONS WORKSPACE</span><h2>Welcome to CORE</h2><p>Sign in with your workspace credentials.</p>{noticeElement}<label>Username<input name="username" autoComplete="username" required maxLength={100} autoFocus placeholder="Your username" /></label><label>Password<input name="password" type="password" autoComplete="current-password" required maxLength={256} placeholder="Your password" /></label><button className="button primary" disabled={busy}>{busy ? "Connecting…" : "Open workspace"}<Icon name="arrow" size={18} /></button><small>Your session stays in this tab and ends when you refresh or sign out.</small></form></div></main>;
+
+  return <div className="app-shell"><aside className="sidebar"><Link href="/" className="brand" onClick={(event) => { event.preventDefault(); navigate("overview"); }}><span className="brand-mark">C</span>CORE<span className="brand-dot">.</span></Link><div className="workspace-label">OPERATIONS WORKSPACE</div><nav aria-label="Main navigation">{views.map((entry) => <button key={entry.id} className={view === entry.id ? "nav-link active" : "nav-link"} onClick={() => navigate(entry.id)} aria-current={view === entry.id ? "page" : undefined}><Icon name={entry.icon} /><span>{entry.label}</span>{entry.id === "inventory" && low.length > 0 && <span className="nav-count">{low.length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-note"><span className="live-dot" /> Connected workspace<p>One place. Every operation.</p></div><div className="account"><span className="avatar">{user.slice(0, 1).toUpperCase()}</span><div><strong>{user}</strong><small>Operations team</small></div><button className="icon-button" onClick={logout} aria-label="Sign out"><Icon name="logout" /></button></div></div></aside>
+    <div className="main-shell"><header className="topbar"><div><span className="breadcrumb">Workspace</span><span className="breadcrumb-divider">/</span><strong>{views.find((entry) => entry.id === view)?.label}</strong></div><div className="topbar-right"><span className="connection"><span className="live-dot" />{loading ? "Syncing" : stale ? "Refresh needed" : loaded ? "Connected" : "Awaiting data"}</span><button className="icon-button mobile-signout" onClick={logout} aria-label="Sign out"><Icon name="logout" size={18} /></button><span className="avatar small">{user.slice(0, 1).toUpperCase()}</span></div></header><main className="content">
+      <div className="page-heading"><div><div className="eyebrow">CORE OPERATIONS</div><h1>{view === "overview" ? "Your operation at a glance" : view === "inventory" ? "Inventory" : view === "orders" ? "Orders" : "Your operations assistant"}</h1><p>{view === "overview" ? "Keep stock in sight and every order moving forward." : view === "inventory" ? "A single source of truth for the products you manage." : view === "orders" ? "Manage the journey from first request to final delivery." : "Turn your operational documents into useful answers."}</p></div><div className="heading-actions">{view !== "assistant" && <button className="button secondary" onClick={() => void refresh()} disabled={loading}><Icon name="refresh" size={17} />{loading ? "Refreshing…" : "Refresh"}</button>}{view === "inventory" && <button className="button primary" disabled={busy} onClick={() => setEditor("new")}><Icon name="plus" size={18} />Add item</button>}{view === "orders" && <button className="button primary" disabled={busy} onClick={() => setNewOrder(true)}><Icon name="plus" size={18} />Create order</button>}</div></div>{noticeElement}
+      {!loaded && view !== "assistant" ? <section className="panel"><Empty title={loading ? "Loading your workspace…" : "Your services are unavailable"} detail={loading ? "Fetching inventory and orders." : "Check that the gateway, inventory, and orders services are running, then refresh."} action={!loading && <button className="button secondary" onClick={() => void refresh()}>Try again</button>} /></section> : <>
+        {view === "overview" && <><section className="summary-grid" aria-label="Operational summary"><Metric label="Inventory items" value={number(items.length)} detail={`${number(items.reduce((sum, item) => sum + item.quantity, 0))} units in stock`} icon="box" /><Metric label="Inventory value" value={money(value)} detail="Current stock × unit price · USD" icon="grid" /><Metric label="Active orders" value={number(active.length)} detail={`${number(orders.length)} orders in total`} icon="orders" /><Metric label="Needs attention" value={number(low.length)} detail="Items at 10 units or fewer" icon="alert" warning={low.length > 0} /></section>
+          <div className="overview-grid"><section className="panel attention-panel"><div className="panel-heading"><div><span className="eyebrow">STOCK HEALTH</span><h2>Keep your shelves ready</h2></div><span className="pill">{low.length} low stock</span></div>{low.length ? <div className="stock-list">{low.slice(0, 5).map((item) => <div key={item.id} className="stock-row"><span className="product-icon"><Icon name="box" /></span><div><strong>{item.name}</strong><small>{item.sku}</small></div><span className={`stock-quantity ${item.quantity === 0 ? "out" : ""}`}>{item.quantity === 0 ? "Out of stock" : `${item.quantity} left`}</span><button className="text-button" onClick={() => setEditor(item)}>Update<Icon name="arrow" size={15} /></button></div>)}</div> : <div className="compact-empty"><Icon name="check" size={30} /><h3>{items.length ? "Stock is in good shape" : "Start with your first product"}</h3><p>{items.length ? "All inventory items are above the low-stock threshold." : "Add inventory to begin tracking stock health."}</p></div>}<button className="panel-footer" onClick={() => navigate("inventory")}>View inventory<Icon name="arrow" size={17} /></button></section>
+          <section className="panel flow-panel"><div className="panel-heading"><div><span className="eyebrow">ORDER FLOW</span><h2>Every stage, in view</h2></div><Icon name="orders" /></div><div className="flow-total"><strong>{orders.length}</strong><span>total orders</span></div><div className="flow-bar" aria-hidden="true">{(Object.keys(labels) as Status[]).map((status) => <span className={status.toLowerCase()} key={status} style={{ flex: orders.filter((order) => order.status === status).length || 0.001 }} />)}</div><div className="flow-legend">{(Object.keys(labels) as Status[]).map((status) => <div key={status}><span className={`legend-dot ${status.toLowerCase()}`} />{labels[status]}<strong>{orders.filter((order) => order.status === status).length}</strong></div>)}</div></section></div>
+          <section className="panel"><div className="panel-heading"><div><span className="eyebrow">LATEST ACTIVITY</span><h2>Recent orders</h2></div><button className="text-button" onClick={() => navigate("orders")}>All orders<Icon name="arrow" size={16} /></button></div>{orders.length ? <div className="table-scroll"><table><thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Quantity</th><th>Status</th></tr></thead><tbody>{[...orders].sort((a, b) => b.id - a.id).slice(0, 5).map((order) => <tr key={order.id}><td className="order-id">#{String(order.id).padStart(4, "0")}</td><td>{order.customerName}</td><td><span className="sku">{order.sku}</span></td><td>{order.quantity}</td><td><Badge status={order.status} /></td></tr>)}</tbody></table></div> : <Empty title="Your next order starts here" detail="Create an order to track its progress through fulfillment." action={<button className="button secondary" onClick={() => setNewOrder(true)}>Create order<Icon name="plus" size={16} /></button>} />}</section>
+          <section className="assistant-banner"><div className="assistant-symbol"><Icon name="spark" size={27} /></div><div><h3>Your knowledge, a little more useful.</h3><p>Add operating procedures and ask questions with source references.</p></div><button className="button secondary" onClick={() => navigate("assistant")}>Open assistant<Icon name="arrow" size={17} /></button></section></>}
+        {view === "inventory" && <section className="panel"><div className="table-toolbar"><div className="search-input"><Icon name="search" size={18} /><input aria-label="Search inventory" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products, SKUs…" /></div><select aria-label="Filter inventory" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="ALL">All stock levels</option><option value="LOW">Low stock (≤ 10)</option></select><span className="result-count">{shownItems.length} items</span></div>{shownItems.length ? <div className="table-scroll"><table><thead><tr><th>Product</th><th>SKU</th><th>Stock</th><th>Unit price</th><th>Stock value</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{shownItems.map((item) => <tr key={item.id}><td><div className="product-cell"><span className="product-icon"><Icon name="box" /></span><div><strong>{item.name}</strong>{item.description && <small title={item.description}>{item.description}</small>}</div></div></td><td><span className="sku">{item.sku}</span></td><td><span className={item.quantity <= 10 ? "stock-quantity" : ""}>{number(item.quantity)} units</span></td><td>{money(item.price)}</td><td>{money(item.quantity * item.price)}</td><td><div className="row-actions"><button className="text-button" disabled={busy} onClick={() => setEditor(item)}>Edit</button><button className="text-button danger-text" disabled={busy} onClick={() => setDeleting(item)}>Delete</button></div></td></tr>)}</tbody></table></div> : <Empty title={items.length ? "No matching products" : "Make room for your first product"} detail={items.length ? "Try another search or change the stock filter." : "Add a product to start keeping track of inventory."} action={!items.length && <button className="button primary" onClick={() => setEditor("new")}>Add item<Icon name="plus" size={16} /></button>} />}</section>}
+        {view === "orders" && <section className="panel"><div className="table-toolbar"><div className="search-input"><Icon name="search" size={18} /><input aria-label="Search orders" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search orders, customers, SKUs…" /></div><select aria-label="Filter orders by status" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="ALL">All statuses</option>{Object.entries(labels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}</select><span className="result-count">{shownOrders.length} orders</span></div>{shownOrders.length ? <div className="table-scroll"><table><thead><tr><th>Order / created</th><th>Customer</th><th>SKU</th><th>Quantity</th><th>Status</th><th>Next action</th></tr></thead><tbody>{shownOrders.map((order) => <tr key={order.id}><td><strong className="order-id">#{String(order.id).padStart(4, "0")}</strong><small className="cell-detail">{order.createdAt.slice(0, 10)}</small></td><td>{order.customerName}</td><td><span className="sku">{order.sku}</span></td><td>{order.quantity}</td><td><Badge status={order.status} /></td><td><div className="row-actions">{next[order.status] && <button className="text-button" disabled={busy} onClick={() => void mutate(`/orders/${order.id}/status?status=${next[order.status]}`, { method: "PATCH" }, "Order status updated.")}>{order.status === "PENDING" ? "Confirm" : order.status === "CONFIRMED" ? "Mark shipped" : "Mark delivered"}<Icon name="arrow" size={15} /></button>}{["PENDING", "CONFIRMED"].includes(order.status) && <button className="text-button danger-text" disabled={busy} onClick={() => setCancelling(order)}>Cancel</button>}{["DELIVERED", "CANCELLED"].includes(order.status) && <span className="muted">Complete</span>}</div></td></tr>)}</tbody></table></div> : <Empty title={orders.length ? "No matching orders" : "Ready for your first order"} detail={orders.length ? "Try another search or choose a different status." : "Create an order and manage each step of fulfillment."} action={!orders.length && <button className="button primary" onClick={() => setNewOrder(true)}>Create order<Icon name="plus" size={16} /></button>} />}<div className="table-note">Orders track fulfillment independently. Creating or cancelling an order does not change inventory quantities.</div></section>}
+        {view === "assistant" && <div className="assistant-grid"><section className="panel query-panel"><div className="panel-heading"><div><span className="eyebrow">OPERATIONS KNOWLEDGE</span><h2>What would you like to know?</h2></div><Icon name="spark" size={25} /></div><p className="panel-description">Ask about documents you have added to your operations knowledge base. Answers reference the retrieved sources.</p><form onSubmit={ask}><label htmlFor="question">Your question</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} required minLength={2} maxLength={4000} rows={4} placeholder="What is our procedure for handling low stock?" /><div className="query-actions"><span>Collection: operations</span><button className="button primary" disabled={asking || !question.trim()}>{asking ? "Finding an answer…" : "Ask assistant"}<Icon name="arrow" size={17} /></button></div></form>{asking && <div className="answer-placeholder" role="status">Searching your operational documents…</div>}{answer && <article className="answer"><div className="answer-heading"><span className="assistant-symbol"><Icon name="spark" size={18} /></span><strong>CORE assistant</strong>{answer.mode && <span className="pill">{answer.mode.replaceAll("_", " ")}</span>}</div><p>{answer.answer}</p>{answer.warning && <p className="answer-warning">{answer.warning}</p>}{answer.sources.length > 0 && <div className="sources"><strong>Sources</strong><ul>{answer.sources.map((source, index) => <li key={`${source}-${index}`}>{source}</li>)}</ul></div>}</article>}{!answer && !asking && <div className="knowledge-hint"><Icon name="spark" size={29} /><h3>Useful answers start with your knowledge.</h3><p>Add a policy, supplier note, or operating procedure, then ask a question about it.</p></div>}</section><section className="panel document-panel"><div className="panel-heading"><div><span className="eyebrow">KNOWLEDGE BASE</span><h2>Add a document</h2></div><Icon name="plus" /></div><p className="panel-description">Paste reference material to make it available for retrieval. Each submission adds a new document.</p><form onSubmit={ingest}><label>Source name<input name="source" required maxLength={200} placeholder="e.g. Warehouse restocking procedure" /></label><label>Document text<textarea name="text" required minLength={10} maxLength={20000} rows={10} placeholder="Paste the document content here…" /></label><button className="button secondary" disabled={ingesting}>{ingesting ? "Adding document…" : "Add to knowledge base"}<Icon name="plus" size={17} /></button></form><div className="document-note"><Icon name="box" size={17} /><p>The assistant uses saved documents. Live inventory and order records are not automatically added.</p></div></section></div>}
+      </>}<footer className="page-footer"><span>CORE · Centralized Operations &amp; Routing Engine</span><span>{updated ? `Last refreshed ${updated.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}` : ""}</span></footer>
+    </main></div>
+    {editor && <Modal title={editor === "new" ? "Add inventory item" : "Edit inventory item"} close={() => { if (!busy) setEditor(null); }}><form onSubmit={saveItem} className="editor-form"><label>Product name<input name="name" required maxLength={200} defaultValue={itemForm?.name} autoFocus /></label><label>SKU<input name="sku" required maxLength={100} defaultValue={itemForm?.sku} /></label><label>Description<textarea name="description" rows={3} maxLength={2000} defaultValue={itemForm?.description || ""} /></label><div className="form-columns"><label>Quantity<input name="quantity" type="number" required min="0" max="1000000000" step="1" defaultValue={itemForm?.quantity ?? 0} /></label><label>Unit price (USD)<input name="price" type="number" required min="0" max="9999999999.99" step="0.01" defaultValue={itemForm?.price ?? 0} /></label></div>{notice?.error && <p className="form-error" role="alert">{notice.message}</p>}<div className="modal-actions"><button type="button" className="button secondary" disabled={busy} onClick={() => setEditor(null)}>Cancel</button><button className="button primary" disabled={busy}>{busy ? "Saving…" : "Save item"}</button></div></form></Modal>}
+    {newOrder && <Modal title="Create order" close={() => { if (!busy) setNewOrder(false); }}><form onSubmit={saveOrder} className="editor-form"><label>Customer name<input name="customerName" required maxLength={200} autoFocus /></label><label>Product SKU<input name="sku" list="product-skus" required maxLength={100} placeholder="Choose or enter a SKU" /><datalist id="product-skus">{items.map((item) => <option key={item.id} value={item.sku}>{item.name}</option>)}</datalist></label><label>Quantity<input name="quantity" type="number" required min="1" max="1000000000" step="1" defaultValue={1} /></label><p className="form-hint">New orders start as pending. Inventory quantities are managed separately.</p>{notice?.error && <p className="form-error" role="alert">{notice.message}</p>}<div className="modal-actions"><button type="button" className="button secondary" disabled={busy} onClick={() => setNewOrder(false)}>Cancel</button><button className="button primary" disabled={busy}>{busy ? "Creating…" : "Create order"}</button></div></form></Modal>}
+    {deleting && <Modal title="Delete inventory item?" close={() => { if (!busy) setDeleting(null); }}><p className="confirm-text">This will permanently remove <strong>{deleting.name}</strong> ({deleting.sku}) from inventory. Existing orders will keep their SKU references.</p>{notice?.error && <p className="form-error" role="alert">{notice.message}</p>}<div className="modal-actions"><button className="button secondary" disabled={busy} onClick={() => setDeleting(null)}>Keep item</button><button className="button danger" disabled={busy} onClick={() => void mutate(`/inventory/${deleting.id}`, { method: "DELETE" }, "Inventory item deleted.")}>{busy ? "Deleting…" : "Delete item"}</button></div></Modal>}
+    {cancelling && <Modal title="Cancel this order?" close={() => { if (!busy) setCancelling(null); }}><p className="confirm-text">Order <strong>#{String(cancelling.id).padStart(4, "0")}</strong> for {cancelling.customerName} will be marked cancelled. This action cannot be reversed.</p>{notice?.error && <p className="form-error" role="alert">{notice.message}</p>}<div className="modal-actions"><button className="button secondary" disabled={busy} onClick={() => setCancelling(null)}>Keep order</button><button className="button danger" disabled={busy} onClick={() => void mutate(`/orders/${cancelling.id}`, { method: "DELETE" }, "Order cancelled.")}>{busy ? "Cancelling…" : "Cancel order"}</button></div></Modal>}
+  </div>;
 }
+
+function Metric({ label, value, detail, icon, warning }: { label: string; value: string; detail: string; icon: string; warning?: boolean }) { return <article className={`metric ${warning ? "warning" : ""}`}><div><span>{label}</span><Icon name={icon} /></div><strong>{value}</strong><p>{detail}</p></article>; }
