@@ -1,326 +1,184 @@
 # CORE — Centralized Operations & Routing Engine
 
-### AI-Augmented Supply Chain Platform
+CORE is a local supply-chain operations application with a Next.js dashboard, a Spring Cloud API gateway, independent inventory and order services, and a document assistant. PostgreSQL stores business records, Kafka carries domain events, and ChromaDB stores document vectors.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Spring%20Boot-3.2.5-6DB33F?style=for-the-badge&logo=springboot&logoColor=white" alt="Spring Boot">
-  <img src="https://img.shields.io/badge/Next.js-15-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js">
-  <img src="https://img.shields.io/badge/FastAPI-0.110+-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
-  <img src="https://img.shields.io/badge/LangChain-0.2+-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white" alt="LangChain">
-  <img src="https://img.shields.io/badge/PostgreSQL-15-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Apache%20Kafka-7.5-231F20?style=for-the-badge&logo=apachekafka&logoColor=white" alt="Kafka">
-  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
-</p>
+The dashboard includes authenticated access, searchable inventory with create/edit/delete, order creation and lifecycle management, live summary metrics, document ingestion, and answers with source references. Empty and unavailable services are shown explicitly; there is no seeded business data.
 
----
+## Start with Podman
 
-## Overview
+Install [Podman](https://podman.io/docs/installation) 4.6+ and
+[podman-compose](https://github.com/containers/podman-compose/releases/tag/v1.6.0)
+1.6.0+ (required for the readiness flags below). For example, with pipx installed:
 
-**CORE** is a production-grade, AI-augmented microservices platform designed to modernize supply chain operations. It combines real-time inventory tracking, order lifecycle management, and an intelligent AI pipeline powered by Google Generative AI and LangChain — all orchestrated through a unified API gateway and event-driven architecture.
+```bash
+pipx install podman-compose==1.6.0
+```
 
-The platform is built on three pillars:
+On macOS and Windows, initialize and start a [Podman machine](https://docs.podman.io/en/latest/markdown/podman-machine.1.html)
+before running the stack (`podman machine init` once, then `podman machine start`).
+On Linux, run Podman as your regular user. Then run from this directory:
 
-1. **Centralized Operations** — Unified gateway routing all traffic to domain-specific microservices
-2. **Event-Driven Architecture** — Apache Kafka enabling real-time, asynchronous communication between services
-3. **AI-Augmented Intelligence** — RAG (Retrieval-Augmented Generation) pipeline for supply chain insights and decision support
+```bash
+cp .env.example .env
+# Edit .env if you want different local credentials or optional Gemini generation.
+podman-compose up --build -d --wait --wait-timeout 600
+```
 
----
+Open **http://localhost:3000** and sign in with **admin / admin**, or the `CORE_ADMIN_USERNAME` and `CORE_ADMIN_PASSWORD` set in `.env`. The first build downloads images and dependencies and may take several minutes. Application containers include their Node, Java, and Python runtimes.
+
+`podman-compose` reads `compose.yml` and builds each application from its
+`Containerfile`, using `.containerignore` to exclude local build artifacts and secrets.
+
+```bash
+podman-compose ps
+podman-compose logs -f gateway inventory-service orders-service ai-agent frontend
+podman-compose down
+```
+
+`podman-compose down` preserves database and document volumes. PostgreSQL initialization runs only when its data volume is first created. Changing database credentials in `.env` does not change credentials in an existing database volume. Podman uses separate container and volume storage; data from a previous Docker setup must be backed up and restored separately.
+
+All published ports bind to loopback. Authentication is enforced at the gateway; direct inventory, orders, and vector-store ports are for local development. This configuration is intended for a trusted local workstation. An external deployment needs TLS, restricted internal service access, secret management, and an appropriate identity provider.
 
 ## Architecture
 
-```
-                         ┌─────────────────┐
-                         │    Frontend      │
-                         │   (Next.js)      │
-                         │    :3000         │
-                         └────────┬─────────┘
-                                  │
-                         ┌────────▼─────────┐
-                         │   API Gateway    │
-                         │ (Spring Cloud)   │
-                         │    :8080         │
-                         └──┬─────┬─────┬──┘
-                            │     │     │
-              ┌─────────────┤     │     ├─────────────┐
-              │             │     │     │             │
-    ┌─────────▼───┐  ┌─────▼─────▼─┐  ┌──────────▼──┐
-    │  Inventory  │  │   Orders    │  │  AI Agent   │
-    │  Service    │  │   Service   │  │  (FastAPI)  │
-    │   :8081     │  │    :8082    │  │   :8090     │
-    └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-           │                │                │
-           │         ┌──────▼──────┐         │
-           └────────►│   Kafka     │◄────────┘
-                     │   :29092    │
-                     └─────────────┘
-           │                                 │
-    ┌──────▼──────┐                   ┌──────▼──────┐
-    │ PostgreSQL  │                   │  ChromaDB   │
-    │   :5432     │                   │   :8000     │
-    └─────────────┘                   └─────────────┘
+```text
+Browser :3000
+  -> Next.js /api proxy (runtime GATEWAY_URL)
+    -> Gateway :8080 (stateless HTTP Basic)
+      -> Inventory :8081 -> core_inventory (PostgreSQL)
+      -> Orders    :8082 -> core_orders    (PostgreSQL)
+      -> AI agent  :8090 -> ChromaDB :8000
+                            -> optional Google Gemini
+Inventory and Orders -> transactional outbox -> Kafka :29092
 ```
 
----
+Browser credentials are held in memory and cleared on refresh or sign-out. The browser uses the same origin for every API call. The Next.js server forwards its Authorization header to the gateway, which authenticates requests and removes that header before forwarding to internal services.
 
-## Project Structure
+| Component | Technology | Local port |
+| --- | --- | --- |
+| Frontend | Next.js, React, TypeScript | 3000 |
+| Gateway | Spring Boot 3.2.5 / Spring Cloud 2023.0.1, WebFlux Security | 8080 |
+| Inventory | Spring Boot, JPA, PostgreSQL, Kafka | 8081 |
+| Orders | Spring Boot, JPA, PostgreSQL, Kafka | 8082 |
+| Assistant | FastAPI, Chroma v2 HTTP API, optional LangChain Gemini | 8090 |
+| Database | PostgreSQL 15 | 5432 |
+| Broker | Confluent Kafka 7.5.0 / Zookeeper | 29092 |
+| Vector store | ChromaDB 1.5.9 | 8000 |
 
-```
-CORE/
-├── frontend/                          Next.js (React + TypeScript)
-│   ├── src/app/                       App Router pages & layouts
-│   ├── public/                        Static assets
-│   ├── Dockerfile                     Multi-stage production build
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── gateway/                           Spring Cloud Gateway + Spring Security
-│   ├── src/main/java/com/core/gateway/
-│   │   ├── GatewayApplication.java    Application entry point
-│   │   └── SecurityConfig.java        WebFlux security configuration
-│   ├── src/main/resources/
-│   │   └── application.yml            Route definitions & security config
-│   ├── pom.xml                        Maven dependencies
-│   └── Dockerfile
-│
-├── backend/
-│   ├── inventory-service/             Inventory management microservice
-│   │   ├── src/main/java/com/core/inventory/
-│   │   │   ├── InventoryServiceApplication.java
-│   │   │   ├── model/InventoryItem.java         JPA entity
-│   │   │   ├── repository/InventoryRepository.java
-│   │   │   ├── service/InventoryService.java    Business logic + Kafka events
-│   │   │   └── controller/InventoryController.java  REST API
-│   │   ├── src/main/resources/application.yml
-│   │   ├── pom.xml
-│   │   └── Dockerfile
-│   │
-│   └── orders-service/                Order lifecycle microservice
-│       ├── src/main/java/com/core/orders/
-│       │   ├── OrdersServiceApplication.java
-│       │   ├── model/Order.java                 JPA entity with status workflow
-│       │   ├── repository/OrderRepository.java
-│       │   ├── service/OrderService.java        Business logic + Kafka events
-│       │   └── controller/OrderController.java  REST API
-│       ├── src/main/resources/application.yml
-│       ├── pom.xml
-│       └── Dockerfile
-│
-├── ai-agent/                          AI/ML pipeline service
-│   ├── main.py                        FastAPI app with ChromaDB integration
-│   ├── requirements.txt               Python dependencies
-│   ├── .env.example                   Environment variable template
-│   └── Dockerfile
-│
-├── infra/
-│   └── init-db.sql                    PostgreSQL bootstrap (creates per-service DBs)
-│
-├── docker-compose.yml                 Full infrastructure & service orchestration
-├── setup_core.sh                      Automated project bootstrap script
-├── .env.example                       Root environment variable template
-├── .gitignore
-└── README.md
-```
+## Local development
 
----
-
-## Tech Stack
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **Frontend** | Next.js 15, React, TypeScript | Server-side rendered UI with App Router |
-| **API Gateway** | Spring Cloud Gateway, Spring Security | Centralized routing, authentication, rate limiting |
-| **Inventory Service** | Spring Boot 3.2.5, Spring Data JPA | CRUD operations for inventory management |
-| **Orders Service** | Spring Boot 3.2.5, Spring Data JPA | Order lifecycle with status workflow |
-| **AI Agent** | FastAPI, LangChain, Google Generative AI | RAG pipeline for supply chain intelligence |
-| **Database** | PostgreSQL 15 | Relational storage for inventory & orders |
-| **Message Broker** | Apache Kafka (Confluent 7.5) | Event-driven async communication |
-| **Vector Store** | ChromaDB | Embedding storage for AI retrieval |
-| **Containerization** | Docker, Docker Compose | Service orchestration & deployment |
-
----
-
-## Services & Ports
-
-| Service | Port | Health Check |
-|---------|------|-------------|
-| Frontend (Next.js) | `3000` | `http://localhost:3000` |
-| API Gateway | `8080` | `http://localhost:8080/actuator/health` |
-| Inventory Service | `8081` | `http://localhost:8081/actuator/health` |
-| Orders Service | `8082` | `http://localhost:8082/actuator/health` |
-| AI Agent (FastAPI) | `8090` | `http://localhost:8090/health` |
-| PostgreSQL | `5432` | — |
-| Kafka | `29092` | — |
-| Zookeeper | `2181` | — |
-| ChromaDB | `8000` | `http://localhost:8000/api/v1/heartbeat` |
-
----
-
-## API Routes (Gateway)
-
-All requests are routed through the API Gateway at `:8080`:
-
-| Route Pattern | Target Service | Port |
-|--------------|----------------|------|
-| `/api/inventory/**` | Inventory Service | 8081 |
-| `/api/orders/**` | Orders Service | 8082 |
-| `/api/ai/**` | AI Agent | 8090 |
-
-### Inventory Service Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/inventory/inventory` | List all inventory items |
-| `GET` | `/api/inventory/inventory/{id}` | Get item by ID |
-| `POST` | `/api/inventory/inventory` | Create new item |
-| `PUT` | `/api/inventory/inventory/{id}` | Update item |
-| `DELETE` | `/api/inventory/inventory/{id}` | Delete item |
-
-### Orders Service Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/orders/orders` | List all orders |
-| `GET` | `/api/orders/orders/{id}` | Get order by ID |
-| `POST` | `/api/orders/orders` | Create new order |
-| `PATCH` | `/api/orders/orders/{id}/status?status=CONFIRMED` | Update order status |
-| `DELETE` | `/api/orders/orders/{id}` | Cancel order |
-
-### AI Agent Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/ai/health` | Health check |
-| `POST` | `/api/ai/query` | RAG query (retrieval-augmented generation) |
-
----
-
-## Prerequisites
-
-- **Node.js** >= 18
-- **Java** JDK 17+
-- **Python** 3.10+
-- **Docker** & Docker Compose
-- **Maven** 3.9+ (or use included `mvnw` wrapper)
-
----
-
-## Quick Start
-
-### Option 1: Automated Setup
+Requirements: Node.js 20.9+ (22 LTS recommended), JDK 17+, Python 3.10+, Podman 4.6+, and podman-compose 1.6.0+. Maven wrappers download Maven 3.9.12 if needed. Dependency downloads require network access.
 
 ```bash
-chmod +x setup_core.sh
 ./setup_core.sh
+# Installs frontend dependencies and ai-agent/venv; preserves existing .env files.
+podman-compose up -d --wait --wait-timeout 600 postgres zookeeper kafka chromadb
 ```
 
-This script will automatically:
-- Scaffold the Next.js frontend
-- Download Spring Boot projects from Spring Initializr
-- Create a Python virtual environment and install AI dependencies
-- Generate all Dockerfiles, configs, and infrastructure files
+If multiple Python versions are installed, select one with `CORE_PYTHON=python3.12 ./setup_core.sh`. If `JAVA_HOME` is set, it must point to your installed JDK.
 
-### Option 2: Docker Compose (Full Stack)
+Load the root environment before starting the Java services, particularly if you changed database credentials:
 
 ```bash
-docker compose up --build
+set -a
+source .env
+set +a
 ```
 
-This builds and starts all services including infrastructure.
+Start each process in a separate terminal from the repository root:
 
-### Option 3: Development Mode (Individual Services)
-
-**Step 1 — Start infrastructure:**
 ```bash
-docker compose up -d postgres zookeeper kafka chromadb
+(cd backend/inventory-service && ./mvnw spring-boot:run)
+(cd backend/orders-service && ./mvnw spring-boot:run)
+(cd gateway && ./mvnw spring-boot:run)
+(cd ai-agent && ./venv/bin/uvicorn main:app --reload --port 8090)
+(cd frontend && npm run dev)
 ```
 
-**Step 2 — Start backend services:**
+The default gateway targets are localhost ports 8081, 8082, and 8090. Override `INVENTORY_SERVICE_URL`, `ORDERS_SERVICE_URL`, or `AI_SERVICE_URL` when running elsewhere. `frontend/.env.local` can set the server-only `GATEWAY_URL`; the Podman stack sets it to `http://gateway:8080` at runtime.
+
+The AI agent reads `ai-agent/.env`; see its example file. No model API key is required for document retrieval. To use generation, set `GOOGLE_API_KEY` and `GOOGLE_MODEL` (default in the root example: `gemini-3.8-flash`). Provider availability and account access determine which models can be used. Retrieved excerpts remain available if generation fails, and the response identifies the mode.
+
+## API
+
+Use the gateway at `http://localhost:8080`, or the same `/api` routes through the frontend at port 3000. All API routes require HTTP Basic credentials. `/actuator/health` on the gateway and Java services is public; the AI agent's direct health endpoint is `/health`.
+
+| Method | Gateway path | Behavior |
+| --- | --- | --- |
+| GET / POST | `/api/inventory` | List / create an item |
+| GET / PUT / DELETE | `/api/inventory/{id}` | Read / update / remove an item |
+| GET / POST | `/api/orders` | List / create an order |
+| GET | `/api/orders/{id}` | Read an order |
+| PATCH | `/api/orders/{id}/status?status=CONFIRMED` | Change lifecycle status |
+| DELETE | `/api/orders/{id}` | Cancel an order, retaining its record |
+| POST | `/api/ai/documents` | Upsert a bounded document batch |
+| POST | `/api/ai/query` | Retrieve relevant documents and answer |
+| GET | `/api/ai/health` | Assistant and vector-store health |
+
+Inventory creation and replacement accept:
+
+```json
+{"sku":"CORE-001","name":"Shipping carton","description":"Medium carton","quantity":40,"price":2.50}
+```
+
+Orders accept:
+
+```json
+{"customerName":"Acme Distribution","sku":"CORE-001","quantity":3}
+```
+
+IDs, initial order status, and creation time are assigned by the server. Inventory quantities are nonnegative integers; order quantities are positive integers. Prices use decimal arithmetic and accept at most two decimal places. Invalid input returns 400, missing records 404, and duplicate SKUs or invalid transitions 409, with problem details.
+
+The order workflow is **PENDING → CONFIRMED → SHIPPED → DELIVERED**. PENDING and CONFIRMED orders can be CANCELLED. Repeating the current status is safe. An order's SKU is a reference: creating or changing an order does **not** reserve or decrement stock. Inventory quantities are managed independently.
+
+Document ingestion and retrieval:
+
 ```bash
-cd gateway && ./mvnw spring-boot:run
-cd backend/inventory-service && ./mvnw spring-boot:run
-cd backend/orders-service && ./mvnw spring-boot:run
+curl -u admin:admin http://localhost:8080/api/ai/documents \
+  -H 'Content-Type: application/json' \
+  -d '{"collection":"operations","documents":[{"id":"returns-policy","text":"Unopened items can be returned within 30 days.","source":"Returns policy"}]}'
+
+curl -u admin:admin http://localhost:8080/api/ai/query \
+  -H 'Content-Type: application/json' \
+  -d '{"collection":"operations","query":"What is the returns policy?"}'
 ```
 
-**Step 3 — Start AI agent:**
+Ingestion upserts by document ID. The assistant uses deterministic token-hash embeddings, so it needs no embedding API or downloaded model. Retrieval is lexical and does not infer synonyms like a semantic embedding model. Answers include `sources` and `mode`; query responses distinguish no matches from unavailable storage. Documents are provided explicitly; there is no automatic Kafka-to-document ingestion or access to live inventory inside the assistant. See [AI service details](ai-agent/README.md).
+
+## Events and persistence
+
+Inventory and orders each persist a domain change and its event in the same database transaction. A scheduled publisher sends queued events to `inventory-events` or `order-events`, deleting an outbox entry only after Kafka acknowledges it. Broker failures leave entries available for retry, including after restart.
+
+Events contain `eventId`, `type`, `entityType`, `entityId`, `occurredAt`, and `data`. Delivery is at least once; consumers must deduplicate `eventId`. Run one publisher instance per service with this implementation. There is no global ordering across services. See [backend details](backend/README.md).
+
+JPA manages the local schema with `ddl-auto: update`; migration scripts and a durable event-consumer pipeline are outside this local application's scope.
+
+## Verification
+
+After dependency setup:
+
 ```bash
-cd ai-agent
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8090
+./scripts/check.sh
 ```
 
-**Step 4 — Start frontend:**
+This runs the three Java test suites, frontend type checking, production build and proxy tests, AI tests, and Podman Compose validation. Java tests use H2 and disabled scheduling; AI tests use an isolated fake store and HTTP contract mocks, so test execution needs no running infrastructure or API key once dependencies are installed. GitHub Actions runs these checks on push and pull requests.
+
+Against a running stack:
+
 ```bash
-cd frontend
-npm install
-npm run dev
+python3 scripts/smoke_test.py
+# To exercise the gateway directly:
+python3 scripts/smoke_test.py --base-url http://localhost:8080
 ```
 
----
+The smoke test checks authentication, inventory CRUD, duplicate rejection, order transitions, and document ingestion/retrieval. It removes its temporary inventory item and leaves a cancelled order plus an isolated smoke document collection as verification records. If credentials were changed, export `CORE_ADMIN_USERNAME` and `CORE_ADMIN_PASSWORD` first.
 
-## Environment Variables
+## Troubleshooting
 
-Copy `.env.example` to `.env` and configure:
-
-```env
-GOOGLE_API_KEY=your-google-generative-ai-key
-POSTGRES_USER=core_admin
-POSTGRES_PASSWORD=core_secret
-```
-
-For the AI agent, also configure `ai-agent/.env`:
-```env
-GOOGLE_API_KEY=your-google-generative-ai-key
-CHROMA_HOST=localhost
-CHROMA_PORT=8000
-KAFKA_BOOTSTRAP_SERVERS=localhost:29092
-```
-
----
-
-## Event-Driven Architecture
-
-Services communicate asynchronously via Apache Kafka topics:
-
-| Topic | Producer | Event Types |
-|-------|----------|-------------|
-| `inventory-events` | Inventory Service | `CREATED`, `UPDATED`, `DELETED` |
-| `order-events` | Orders Service | `CREATED`, `STATUS_CHANGED`, `CANCELLED` |
-
-Events are published automatically when entities are created, updated, or deleted. Any service can subscribe to these topics to react to changes in real-time.
-
----
-
-## Database Schema
-
-PostgreSQL hosts three databases:
-
-| Database | Service | Description |
-|----------|---------|-------------|
-| `core_main` | Gateway | Primary database (reserved) |
-| `core_inventory` | Inventory Service | Inventory items with SKU, quantity, price |
-| `core_orders` | Orders Service | Orders with status workflow (PENDING → CONFIRMED → SHIPPED → DELIVERED) |
-
-Schema is auto-managed by Hibernate (`ddl-auto: update`).
-
----
-
-## AI Pipeline
-
-The AI Agent implements a **Retrieval-Augmented Generation (RAG)** architecture:
-
-1. **Ingestion** — Documents and supply chain data are embedded and stored in ChromaDB
-2. **Retrieval** — Incoming queries are matched against stored embeddings for relevant context
-3. **Generation** — Google Generative AI produces answers grounded in retrieved context
-
-Powered by:
-- **LangChain** — Orchestration framework for LLM chains
-- **Google Generative AI** — Large language model for response generation
-- **ChromaDB** — Vector database for semantic similarity search
-
----
-
-## License
-
-This project is licensed under the MIT License.
+- If fish reports `Unknown command: podman-compose`, install the separate Compose tool with `pipx install podman-compose==1.6.0`. If installed but still unavailable, run `fish_add_path ~/.local/bin`, then check `podman-compose --version`.
+- A 401 means the credentials differ from the running gateway's configuration. Recreate the gateway after changing `.env`.
+- A proxy 502 means the frontend cannot reach `GATEWAY_URL`; local and container addresses differ.
+- A 503 from the assistant means its Chroma dependency is unavailable. Check `podman-compose logs chromadb ai-agent`; it can reconnect after the store returns.
+- Podman builds require registry, Maven Central, npm, and PyPI connectivity. `podman-compose config --quiet` checks configuration without pulling images.
+- If another PostgreSQL server already uses port 5432, set `POSTGRES_PORT=5433` in `.env`. Compose and the Java development configuration use this port; container-to-container traffic still uses 5432.
+- PostgreSQL data is retained across restarts. Do not remove its volume unless you intend to discard its records.
